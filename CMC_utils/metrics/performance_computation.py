@@ -53,7 +53,7 @@ def metrics_computation(label, prediction, probability, metrics: dict, round_num
     classes_map = {int(v): str(k) for v, k in enumerate(classes)}
     classes_map_inverted = {v: k for k, v in classes_map.items()}
 
-    if label.dtype not in (int, float):
+    if label.dtype.kind not in ('i', 'u', 'f'):
         vectorized_func = np.vectorize(lambda x: classes_map_inverted.get(str(x), None))
         label = vectorized_func(label)
         prediction = vectorized_func(prediction)

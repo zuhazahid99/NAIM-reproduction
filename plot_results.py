@@ -16,10 +16,16 @@ from CMC_utils import save_load
 sns.set_style("whitegrid")
 from matplotlib import rc
 rc('font', **{'family': 'serif', 'serif': ['Cambria']})
-rc('text', usetex=True)
+rc('text', usetex=False)
 
 
 def load_experiment_results(experiment_info: pd.DataFrame, metric: str):
+    import os
+    import itertools
+    import pandas as pd
+    import numpy as np
+    from CMC_utils import save_load
+    from CMC_utils import save_load
     missing_percentages = [int(perc*100) for perc in save_load.load_yaml( os.path.join( experiment_info.path, "config.yaml" ) )["missing_percentages"]]
     train_test_percentages = list(itertools.product(missing_percentages, missing_percentages))
     percentages_relative_paths = [os.path.join(str(train_test_perc[0]), str(train_test_perc[1])) for train_test_perc in train_test_percentages]

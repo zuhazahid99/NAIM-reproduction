@@ -173,7 +173,10 @@ def model_predict(model, dataloader, criterions, regularizers, optimizer, tr_man
                     outputs = outputs[:, 1]
                 outputs = np.squeeze(outputs)
 
-            batch_results = pd.DataFrame(dict( ID=idxs, label=labels.tolist(), prediction=preds.tolist(), probability=outputs.tolist()))
+            import numpy as _np
+            _lbl = labels.cpu().numpy() if hasattr(labels, "cpu") else _np.asarray(labels)
+            labels_1d = _lbl.argmax(axis=-1).tolist() if _lbl.ndim > 1 else _lbl.tolist()
+            batch_results = pd.DataFrame(dict( ID=idxs, label=labels_1d, prediction=preds.tolist(), probability=outputs.tolist()))
             total_results = pd.concat( [total_results, batch_results], axis=0, ignore_index=True)
 
             running_loss += loss.item() * input_list[0].size(0)
