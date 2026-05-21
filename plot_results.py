@@ -26,12 +26,34 @@ def load_experiment_results(experiment_info: pd.DataFrame, metric: str):
     import numpy as np
     from CMC_utils import save_load
     from CMC_utils import save_load
-    missing_percentages = [int(perc*100) for perc in save_load.load_yaml( os.path.join( experiment_info.path, "config.yaml" ) )["missing_percentages"]]
+    config_path = os.path.join(experiment_info.path, "config.yaml")
+    if not os.path.exists(config_path):
+        print(f"[SKIP] No config.yaml in {experiment_info.path}")
+        return None
+    missing_percentages = [int(perc*100) for perc in save_load.load_yaml(config_path)["missing_percentages"]]
     train_test_percentages = list(itertools.product(missing_percentages, missing_percentages))
     percentages_relative_paths = [os.path.join(str(train_test_perc[0]), str(train_test_perc[1])) for train_test_perc in train_test_percentages]
 
     results_paths = [os.path.join(experiment_info.path, "results", train_test_perc, "balanced", "test", "set_average_performance.csv") for train_test_perc in percentages_relative_paths]
-    results = pd.concat( [save_load.load_table(path, index_col=0, header=[0, 1]).loc[["test"], [(metric, "mean"), (metric, "std")]].reset_index(drop=True).assign(train_perc=train_perc, test_perc=test_perc, db=experiment_info.db, model=experiment_info.model, imputer=experiment_info.imputer) for path, (train_perc, test_perc) in zip(results_paths, train_test_percentages)], axis=0, ignore_index=True )
+    loaded = []
+    for path, (train_perc, test_perc) in zip(results_paths, train_test_percentages):
+        if not os.path.exists(path):
+            print(f"[SKIP] Missing: {path}")
+            continue
+        try:
+            df = (save_load.load_table(path, index_col=0, header=[0, 1])
+                  .loc[["test"], [(metric, "mean"), (metric, "std")]]
+                  .reset_index(drop=True)
+                  .assign(train_perc=train_perc, test_perc=test_perc,
+                          db=experiment_info.db, model=experiment_info.model,
+                          imputer=experiment_info.imputer))
+            loaded.append(df)
+        except Exception as e:
+            print(f"[SKIP] Error loading {path}: {e}")
+            continue
+    if not loaded:
+        return None
+    results = pd.concat(loaded, axis=0, ignore_index=True)
 
     results.columns = results.columns.droplevel(0)
     results.columns = ["mean_"+metric, "std_"+metric, "train_perc", "test_perc", "db", "model", "imputer"]
@@ -182,7 +204,12 @@ def plot_results(metric_to_plot: str, results_folder_path: str, output_figures_p
     experiments_info = pd.DataFrame([folder.replace("_with_missing_generation", "").replace("_sklearn", "").replace("no_imputation", "-").split("_") for folder in experiments_folders], columns=["db", "model", "imputer"])
     experiments_info["path"] = [os.path.join(results_folder_path, folder) for folder in experiments_folders]
 
-    all_results = pd.concat( experiments_info.parallel_apply(load_experiment_results, metric=metric_to_plot, axis=1).values, axis=0 )
+    raw = experiments_info.parallel_apply(load_experiment_results, metric=metric_to_plot, axis=1).values
+    valid = [r for r in raw if r is not None]
+    if not valid:
+        print("[ERROR] No completed experiments found.")
+        return
+    all_results = pd.concat(valid, axis=0)
     del experiments_folders, experiments_info
 
     mean_results = all_results[["mean_"+metric_to_plot]].reset_index()
