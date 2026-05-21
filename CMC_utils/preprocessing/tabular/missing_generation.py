@@ -198,6 +198,80 @@ def MCAR_global(data: pd.DataFrame, missing_fraction: float, **_) -> Tuple[pd.Da
     return masked_data, final_missing_percentage
 
 
+def MAR_global(data: pd.DataFrame, missing_fraction: float, **_) -> Tuple[pd.DataFrame, np.array]:
+    """
+    Missing At Random (MAR): missingness in target features depends on values of observed cause features.
+    """
+    masked_data = data.copy()
+    n_rows, n_cols = masked_data.shape
+    rng = np.random.default_rng()
+
+    all_cols = np.arange(n_cols)
+    rng.shuffle(all_cols)
+    n_cause = max(1, n_cols // 2)
+    cause_cols = all_cols[:n_cause]
+    target_cols = all_cols[n_cause:]
+
+    missing_mask = np.zeros((n_rows, n_cols), dtype=bool)
+
+    for target_col in target_cols:
+        cause_col = rng.choice(cause_cols)
+        cause_values = masked_data.iloc[:, cause_col].to_numpy(dtype=float)
+        if np.isnan(cause_values).any():
+            cause_values = np.where(np.isnan(cause_values), np.nanmedian(cause_values), cause_values)
+
+        ranks = pd.Series(cause_values).rank(method="average").to_numpy()
+        probs = ranks / ranks.sum()
+
+        n_missing = int(np.floor(missing_fraction * n_rows))
+        if n_missing > 0:
+            chosen = rng.choice(n_rows, size=n_missing, replace=False, p=probs)
+            missing_mask[chosen, target_col] = True
+
+    missing_mask = mask_correction(missing_mask, 0, masked_data)
+    missing_mask = mask_correction(missing_mask, 1, masked_data)
+
+    masked_data = masked_data.mask(missing_mask, np.nan)
+
+    final_missing_percentage = np.round((masked_data.isna().sum().sum() / (masked_data.shape[0] * masked_data.shape[1])) * 100)
+    log.info(f"{final_missing_percentage}% of data is missing (MAR_global)")
+
+    return masked_data, final_missing_percentage
+
+
+def MNAR_global(data: pd.DataFrame, missing_fraction: float, **_) -> Tuple[pd.DataFrame, np.array]:
+    """
+    Missing Not At Random (MNAR): missingness in each feature depends on its own values (self-masking).
+    """
+    masked_data = data.copy()
+    n_rows, n_cols = masked_data.shape
+    rng = np.random.default_rng()
+
+    missing_mask = np.zeros((n_rows, n_cols), dtype=bool)
+
+    for col in range(n_cols):
+        col_values = masked_data.iloc[:, col].to_numpy(dtype=float)
+        if np.isnan(col_values).any():
+            col_values = np.where(np.isnan(col_values), np.nanmedian(col_values), col_values)
+
+        ranks = pd.Series(col_values).rank(method="average").to_numpy()
+        probs = ranks / ranks.sum()
+
+        n_missing = int(np.floor(missing_fraction * n_rows))
+        if n_missing > 0:
+            chosen = rng.choice(n_rows, size=n_missing, replace=False, p=probs)
+            missing_mask[chosen, col] = True
+
+    missing_mask = mask_correction(missing_mask, 0, masked_data)
+    missing_mask = mask_correction(missing_mask, 1, masked_data)
+
+    masked_data = masked_data.mask(missing_mask, np.nan)
+
+    final_missing_percentage = np.round((masked_data.isna().sum().sum() / (masked_data.shape[0] * masked_data.shape[1])) * 100)
+    log.info(f"{final_missing_percentage}% of data is missing (MNAR_global)")
+
+    return masked_data, final_missing_percentage
+
 def no_generation(data: pd.DataFrame, **_) -> Tuple[pd.DataFrame, np.array]:
     final_missing_percentage = np.round((data.isna().sum().sum() / (data.shape[0] * data.shape[1])) * 100)
     log.info(f"{final_missing_percentage}% of data is missing")
@@ -222,7 +296,7 @@ def generate_missing( data: pd.DataFrame, method: str, missing_fraction: float, 
     if copy:
         data = data.copy()
 
-    options = dict( MCAR_sample = MCAR_sample, MCAR_feature = MCAR_feature, MCAR_global = MCAR_global, no_generation=no_generation )
+    options = dict( MCAR_sample = MCAR_sample, MCAR_feature = MCAR_feature, MCAR_global = MCAR_global, MAR_global = MAR_global, MNAR_global = MNAR_global, no_generation=no_generation )
 
     params = { "missing_fraction": missing_fraction, **kwargs }  # "return_first": True,
 
