@@ -216,9 +216,13 @@ def MAR_global(data: pd.DataFrame, missing_fraction: float, **_) -> Tuple[pd.Dat
 
     for target_col in target_cols:
         cause_col = rng.choice(cause_cols)
-        cause_values = masked_data.iloc[:, cause_col].to_numpy(dtype=float)
-        if np.isnan(cause_values).any():
-            cause_values = np.where(np.isnan(cause_values), np.nanmedian(cause_values), cause_values)
+        cause_series = masked_data.iloc[:, cause_col]
+        try:
+            cause_values = cause_series.to_numpy(dtype=float)
+            if np.isnan(cause_values).any():
+                cause_values = np.where(np.isnan(cause_values), np.nanmedian(cause_values), cause_values)
+        except (ValueError, TypeError):
+            cause_values = pd.factorize(cause_series.fillna("__nan__"))[0].astype(float)
 
         ranks = pd.Series(cause_values).rank(method="average").to_numpy()
         probs = ranks / ranks.sum()
@@ -250,9 +254,13 @@ def MNAR_global(data: pd.DataFrame, missing_fraction: float, **_) -> Tuple[pd.Da
     missing_mask = np.zeros((n_rows, n_cols), dtype=bool)
 
     for col in range(n_cols):
-        col_values = masked_data.iloc[:, col].to_numpy(dtype=float)
-        if np.isnan(col_values).any():
-            col_values = np.where(np.isnan(col_values), np.nanmedian(col_values), col_values)
+        col_series = masked_data.iloc[:, col]
+        try:
+            col_values = col_series.to_numpy(dtype=float)
+            if np.isnan(col_values).any():
+                col_values = np.where(np.isnan(col_values), np.nanmedian(col_values), col_values)
+        except (ValueError, TypeError):
+            col_values = pd.factorize(col_series.fillna("__nan__"))[0].astype(float)
 
         ranks = pd.Series(col_values).rank(method="average").to_numpy()
         probs = ranks / ranks.sum()
